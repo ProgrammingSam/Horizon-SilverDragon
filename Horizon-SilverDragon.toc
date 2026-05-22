@@ -1,0 +1,14 @@
+## Interface: 120005
+## Title: Horizon - SilverDragon
+## Notes: Integrates SilverDragon alerts into the Horizon Focus tracker.
+## Author: ProgrammingSam
+## Version: 1.0.0
+## Dependencies: HorizonSuite
+## OptionalDeps: SilverDragon
+## X-Curse-Project-ID:
+## X-Wago-ID:
+
+HorizonSilverDragon.lua
+HorizonSilverDragonProvider.lua
+HorizonSilverDragonEvents.lua
+HorizonSilverDragonModule.lua
