@@ -39,6 +39,13 @@ local function CollectSilverDragonEntries()
         }
     end
 
+    if horizon.GetDB("sd_showSeenAgo", true) and alert.seenAt then
+        local text = horizon.FormatTimeAgo and horizon.FormatTimeAgo(alert.seenAt)
+        if text then
+            objectives[#objectives + 1] = { text = text, finished = false, noBullet = true, rareSeenAgo = true }
+        end
+    end
+
     return {
         {
             entryKey       = "silverdragon:" .. tostring(alert.npcID),

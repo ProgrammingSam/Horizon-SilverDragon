@@ -73,6 +73,32 @@ end
 -- CALLBACK REGISTRATION
 -- ============================================================================
 
+-- ============================================================================
+-- SEEN-AGO TIMER
+-- Fires every 60 s while the queue is non-empty to keep "X ago" text fresh.
+-- ============================================================================
+
+local seenAgoTimerActive = false
+
+local function RunSeenAgoTick()
+    if #SD.alertOrder == 0 then
+        seenAgoTimerActive = false
+        return
+    end
+    if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
+    C_Timer.After(60, RunSeenAgoTick)
+end
+
+local function StartSeenAgoTimer()
+    if seenAgoTimerActive then return end
+    seenAgoTimerActive = true
+    C_Timer.After(60, RunSeenAgoTick)
+end
+
+-- ============================================================================
+-- CALLBACK REGISTRATION
+-- ============================================================================
+
 local registered = false
 
 local function RegisterSilverDragonCallbacks()
@@ -96,6 +122,7 @@ local function RegisterSilverDragonCallbacks()
         end
 
         if existingIdx then
+            -- Update existing alert and navigate to it; preserve original seenAt.
             local alert = SD.alertQueue[npcID]
             alert.mapID    = mapID
             alert.x        = x
@@ -115,9 +142,11 @@ local function RegisterSilverDragonCallbacks()
                 zoneName = zoneName,
                 is_dead  = is_dead,
                 source   = source,
+                seenAt   = GetTime(),
             }
             SD.alertOrder[#SD.alertOrder + 1] = npcID
             SD.alertIndex = #SD.alertOrder
+            StartSeenAgoTimer()
 
             -- FIFO trim: drop oldest entries when queue exceeds the configured limit.
             local maxAlerts = math.max(SD_MAX_ALERTS_MIN,
@@ -146,6 +175,7 @@ local function RegisterSilverDragonCallbacks()
             SD.alertQueue = {}
             SD.alertOrder = {}
             SD.alertIndex = 0
+            seenAgoTimerActive = false
             if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
         end
     end)
