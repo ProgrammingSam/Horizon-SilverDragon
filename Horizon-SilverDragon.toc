@@ -11,4 +11,3 @@
 HorizonSilverDragon.lua
 HorizonSilverDragonProvider.lua
 HorizonSilverDragonEvents.lua
-HorizonSilverDragonModule.lua
