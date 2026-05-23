@@ -169,6 +169,24 @@ local function RegisterSilverDragonCallbacks()
         if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
     end)
 
+    -- Suppress SilverDragon's own popup while the Focus integration is active.
+    -- hooksecurefunc fires after ShowFrame's body (including popup:Show/OnShow),
+    -- so C_Timer.After(0) ensures we run after any deferred alpha resets.
+    local clickTarget = core:GetModule("ClickTarget", true)
+    if clickTarget and clickTarget.ShowFrame then
+        hooksecurefunc(clickTarget, "ShowFrame", function()
+            if not horizon.GetDB("sd_enabled", false) then return end
+            C_Timer.After(0, function()
+                for i = 0, 10 do
+                    local name = (i == 0) and "SilverDragonPopupButton"
+                                           or ("SilverDragonPopupButton" .. i)
+                    local frame = rawget(_G, name)
+                    if frame and frame.SetAlpha then frame:SetAlpha(0) end
+                end
+            end)
+        end)
+    end
+
     -- Fired when SilverDragon clears its popup (user dismissed or timer expired).
     core.RegisterCallback(SD, "PopupHide", function()
         if #SD.alertOrder > 0 then
