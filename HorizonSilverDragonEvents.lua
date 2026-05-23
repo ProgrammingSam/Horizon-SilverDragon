@@ -170,25 +170,40 @@ local function RegisterSilverDragonCallbacks()
     end)
 
     -- Suppress SilverDragon's own popup while the Focus integration is active.
-    -- hooksecurefunc fires after ShowFrame's body (including popup:Show/OnShow),
-    -- so C_Timer.After(0) ensures we run after any deferred alpha resets.
+    -- SD's animFade resets alpha to 1 after closeAfter seconds, so a one-shot
+    -- C_Timer.After approach fails.  Instead we run an OnUpdate loop that
+    -- continuously forces alpha=0 on every active popup, using SD's own
+    -- EnumerateActive() so we never need to guess frame names.
+    -- The loop is only active (frame shown) while at least one popup is visible.
     local clickTarget = core:GetModule("ClickTarget", true)
     if clickTarget and clickTarget.ShowFrame then
+        local suppressFrame = CreateFrame("Frame")
+        suppressFrame:Hide()
+        suppressFrame:SetScript("OnUpdate", function()
+            if not horizon.GetDB("sd_enabled", false) then
+                suppressFrame:Hide()
+                return
+            end
+            local anyActive = false
+            for popup in clickTarget:EnumerateActive() do
+                anyActive = true
+                if popup:GetAlpha() > 0 then popup:SetAlpha(0) end
+            end
+            if not anyActive then suppressFrame:Hide() end
+        end)
         hooksecurefunc(clickTarget, "ShowFrame", function()
-            if not horizon.GetDB("sd_enabled", false) then return end
-            C_Timer.After(0, function()
-                for i = 0, 10 do
-                    local name = (i == 0) and "SilverDragonPopupButton"
-                                           or ("SilverDragonPopupButton" .. i)
-                    local frame = rawget(_G, name)
-                    if frame and frame.SetAlpha then frame:SetAlpha(0) end
-                end
-            end)
+            if horizon.GetDB("sd_enabled", false) then suppressFrame:Show() end
         end)
     end
 
     -- Fired when SilverDragon clears its popup (user dismissed or timer expired).
+    -- When the Focus integration is active we own the alert lifecycle, so we
+    -- ignore this event and let the user dismiss via the Focus tracker instead.
+    -- (SD's animFade → HideWhenPossible → PopupHide still fires, but we skip it
+    -- to avoid also clearing our queue prematurely and to sidestep the known
+    -- SD+TomTom stack-overflow caused by their re-entrant waypoint callbacks.)
     core.RegisterCallback(SD, "PopupHide", function()
+        if horizon.GetDB("sd_enabled", false) then return end
         if #SD.alertOrder > 0 then
             SD.alertQueue = {}
             SD.alertOrder = {}
