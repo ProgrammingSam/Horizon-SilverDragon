@@ -48,23 +48,17 @@ local function ResolveZoneName(mapID)
     return info and info.name or nil
 end
 
---- Resolve a mob name from npcID.
---- SilverDragon's "Seen" callback does not pass a name; we attempt several
---- sources in order: SilverDragon's own mob DB, the game's creature cache.
---- Returns nil when the name is not yet available (async cache miss).
+--- Resolve a mob name from npcID via SilverDragon's NameForMob API.
+--- That function checks SD's hardcoded mob database (ns.mobdb) and a
+--- tooltip-hyperlink cache; it covers all known rares immediately.
+--- Returns nil on a true cache miss (very uncommon custom/unknown NPCs).
 --- @param npcID number
 --- @return string|nil
 local function ResolveMobName(npcID)
     if not npcID then return nil end
-    -- SilverDragon mob database (populated by its data modules).
     local core = _G.SilverDragon
-    if core and core.db and core.db.global and core.db.global.mobs then
-        local mob = core.db.global.mobs[npcID]
-        if mob and mob.name then return mob.name end
-    end
-    -- Fallback: game creature cache (available when the NPC is in render range).
-    if C_TooltipInfo and C_TooltipInfo.GetUnit then
-        -- Cannot query by npcID directly; skip — caller will retry on next refresh.
+    if core and core.NameForMob then
+        return core:NameForMob(npcID)
     end
     return nil
 end
@@ -148,6 +142,20 @@ local function RegisterSilverDragonCallbacks()
             SD.alertIndex = #SD.alertOrder
             StartSeenAgoTimer()
 
+            -- If the name wasn't in SD's cache yet, retry after 1 s.
+            if not name then
+                C_Timer.After(1, function()
+                    local alert = SD.alertQueue[npcID]
+                    if not alert or alert.name then return end
+                    local c = _G.SilverDragon
+                    local resolved = c and c.NameForMob and c:NameForMob(npcID)
+                    if resolved then
+                        alert.name = resolved
+                        if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
+                    end
+                end)
+            end
+
             -- FIFO trim: drop oldest entries when queue exceeds the configured limit.
             local maxAlerts = math.max(SD_MAX_ALERTS_MIN,
                 math.min(SD_MAX_ALERTS_MAX,
@@ -188,6 +196,8 @@ local function RegisterSilverDragonCallbacks()
             for popup in clickTarget:EnumerateActive() do
                 anyActive = true
                 if popup:GetAlpha() > 0 then popup:SetAlpha(0) end
+                -- PlayerModel frames bypass parent alpha; hide explicitly.
+                if popup.model and popup.model:IsShown() then popup.model:Hide() end
             end
             if not anyActive then suppressFrame:Hide() end
         end)

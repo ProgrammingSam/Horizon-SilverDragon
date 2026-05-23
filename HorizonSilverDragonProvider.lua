@@ -17,7 +17,6 @@ if not horizon or not SD then return end
 --- toggled off, or no alert is active.
 --- @return table
 local function CollectSilverDragonEntries()
-    if not horizon:IsModuleEnabled("silverdragon") then return {} end
     if not horizon.GetDB("sd_enabled", false) then return {} end
 
     if #SD.alertOrder == 0 or SD.alertIndex == 0 then return {} end
@@ -67,6 +66,7 @@ local function CollectSilverDragonEntries()
             sdSource       = alert.source,
             sdAlertIndex   = SD.alertIndex,
             sdAlertTotal   = #SD.alertOrder,
+            vignetteAtlas  = "VignetteKillElite",
             noEntryNumber  = true,
         },
     }
