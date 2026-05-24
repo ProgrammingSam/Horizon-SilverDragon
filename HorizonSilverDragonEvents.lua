@@ -195,8 +195,9 @@ local function RegisterSilverDragonCallbacks()
             local anyActive = false
             for popup in clickTarget:EnumerateActive() do
                 anyActive = true
-                if popup:GetAlpha() > 0 then popup:SetAlpha(0) end
-                -- PlayerModel frames bypass parent alpha; hide explicitly.
+                -- Hide completely so mouse events (tooltips, clicks) are fully suppressed.
+                -- SetAlpha(0) makes the popup invisible but still interactive.
+                if popup:IsShown() then popup:Hide() end
                 if popup.model and popup.model:IsShown() then popup.model:Hide() end
             end
             if not anyActive then suppressFrame:Hide() end
