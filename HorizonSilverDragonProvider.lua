@@ -27,7 +27,8 @@ local function CollectSilverDragonEntries()
     local isLoot = (alert.type == "loot")
 
     -- Per-type visibility filter.
-    if isLoot and not horizon.GetDB("sd_showLoot", true) then return {} end
+    if not isLoot and not horizon.GetDB("sd_showRares", true) then return {} end
+    if isLoot     and not horizon.GetDB("sd_showLoot",  true) then return {} end
 
     local color = horizon.GetQuestColor and horizon.GetQuestColor("SILVERDRAGON")
                   or { r = 0.96, g = 0.56, b = 0.08 }
