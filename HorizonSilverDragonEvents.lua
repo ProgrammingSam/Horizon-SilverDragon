@@ -235,12 +235,18 @@ local function RegisterSilverDragonCallbacks()
     -- Module:Disable() won't unregister it. Instead we replace ShowFrame once with
     -- a wrapper that short-circuits when SD._suppressPopup is set. No hooksecurefunc,
     -- no touching restricted frames, no taint.
+    -- Suppress SD's native popup by patching Enqueue rather than ShowFrame.
+    -- Patching ShowFrame caused it to return nil, which table.insert then placed
+    -- in self.stack, corrupting the sequence and crashing subsequent ipairs
+    -- iterations in Enqueue with "attempt to index a number value".
+    -- Blocking Enqueue means ProcessQueue/ShowFrame are never called, so the
+    -- stack stays clean regardless of what SD does internally.
     local clickTarget = core:GetModule("ClickTarget", true)
-    if clickTarget and clickTarget.ShowFrame then
-        local origShowFrame = clickTarget.ShowFrame
-        clickTarget.ShowFrame = function(self, data)
+    if clickTarget and clickTarget.Enqueue then
+        local origEnqueue = clickTarget.Enqueue
+        clickTarget.Enqueue = function(self, data)
             if SD._suppressPopup then return end
-            return origShowFrame(self, data)
+            return origEnqueue(self, data)
         end
     end
     SD.ApplyPopupSuppression(horizon.GetDB("sd_enabled", false))
