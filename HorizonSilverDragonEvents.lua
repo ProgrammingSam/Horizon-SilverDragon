@@ -177,15 +177,19 @@ local function RegisterSilverDragonCallbacks()
         if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
     end)
 
-    -- Suppress SilverDragon's native popup while the Focus integration is active
-    -- by disabling the ClickTarget AceModule entirely. The previous hooksecurefunc
-    -- + OnUpdate approach ran popup:Hide() on SD's secure frames from insecure
-    -- code, creating Lua taint that propagated through ScheduleRefresh into
-    -- FullLayout, blocking Frame:Show() in combat (ADDON_ACTION_BLOCKED) and
-    -- also allowing SD's SetModel("Interface\Buttons\talktomequestionmark.mdx")
-    -- call to fire (FileData ID 0) before the hide could intervene.
-    -- Disable/Enable avoids all of that — ShowFrame is never called.
-    SD.clickTarget = core:GetModule("ClickTarget", true)
+    -- Suppress SilverDragon's native popup while the Focus integration is active.
+    -- ClickTarget.Announce is registered via LibCallbackHandler (not AceEvent), so
+    -- Module:Disable() won't unregister it. Instead we replace ShowFrame once with
+    -- a wrapper that short-circuits when SD._suppressPopup is set. No hooksecurefunc,
+    -- no touching restricted frames, no taint.
+    local clickTarget = core:GetModule("ClickTarget", true)
+    if clickTarget and clickTarget.ShowFrame then
+        local origShowFrame = clickTarget.ShowFrame
+        clickTarget.ShowFrame = function(self, data)
+            if SD._suppressPopup then return end
+            return origShowFrame(self, data)
+        end
+    end
     SD.ApplyPopupSuppression(horizon.GetDB("sd_enabled", false))
 
     -- Fired when SilverDragon clears its popup (user dismissed or timer expired).
