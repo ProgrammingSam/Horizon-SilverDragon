@@ -177,35 +177,16 @@ local function RegisterSilverDragonCallbacks()
         if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
     end)
 
-    -- Suppress SilverDragon's own popup while the Focus integration is active.
-    -- SD's animFade resets alpha to 1 after closeAfter seconds, so a one-shot
-    -- C_Timer.After approach fails.  Instead we run an OnUpdate loop that
-    -- continuously forces alpha=0 on every active popup, using SD's own
-    -- EnumerateActive() so we never need to guess frame names.
-    -- The loop is only active (frame shown) while at least one popup is visible.
-    local clickTarget = core:GetModule("ClickTarget", true)
-    if clickTarget and clickTarget.ShowFrame then
-        local suppressFrame = CreateFrame("Frame")
-        suppressFrame:Hide()
-        suppressFrame:SetScript("OnUpdate", function()
-            if not horizon.GetDB("sd_enabled", false) then
-                suppressFrame:Hide()
-                return
-            end
-            local anyActive = false
-            for popup in clickTarget:EnumerateActive() do
-                anyActive = true
-                -- Hide completely so mouse events (tooltips, clicks) are fully suppressed.
-                -- SetAlpha(0) makes the popup invisible but still interactive.
-                if popup:IsShown() then popup:Hide() end
-                if popup.model and popup.model:IsShown() then popup.model:Hide() end
-            end
-            if not anyActive then suppressFrame:Hide() end
-        end)
-        hooksecurefunc(clickTarget, "ShowFrame", function()
-            if horizon.GetDB("sd_enabled", false) then suppressFrame:Show() end
-        end)
-    end
+    -- Suppress SilverDragon's native popup while the Focus integration is active
+    -- by disabling the ClickTarget AceModule entirely. The previous hooksecurefunc
+    -- + OnUpdate approach ran popup:Hide() on SD's secure frames from insecure
+    -- code, creating Lua taint that propagated through ScheduleRefresh into
+    -- FullLayout, blocking Frame:Show() in combat (ADDON_ACTION_BLOCKED) and
+    -- also allowing SD's SetModel("Interface\Buttons\talktomequestionmark.mdx")
+    -- call to fire (FileData ID 0) before the hide could intervene.
+    -- Disable/Enable avoids all of that — ShowFrame is never called.
+    SD.clickTarget = core:GetModule("ClickTarget", true)
+    SD.ApplyPopupSuppression(horizon.GetDB("sd_enabled", false))
 
     -- Fired when SilverDragon clears its popup (user dismissed or timer expired).
     -- When the Focus integration is active we own the alert lifecycle, so we

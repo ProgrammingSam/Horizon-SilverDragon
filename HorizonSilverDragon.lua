@@ -43,6 +43,21 @@ end
 -- Initialized here so Provider and Module can safely read them before Events loads.
 -- ============================================================================
 
-SD.alertQueue = {}  -- [npcID] = alertData
-SD.alertOrder = {}  -- ordered list of npcIDs (insertion order)
-SD.alertIndex = 0   -- 1-based index into alertOrder for current display
+SD.alertQueue  = {}   -- [npcID] = alertData
+SD.alertOrder  = {}   -- ordered list of npcIDs (insertion order)
+SD.alertIndex  = 0    -- 1-based index into alertOrder for current display
+SD.clickTarget = nil  -- SilverDragon ClickTarget AceModule; set by Events on load
+
+--- Disable or enable SilverDragon's native popup module so it doesn't compete
+--- with Horizon's Focus integration. Using Disable/Enable avoids hooksecurefunc,
+--- which was causing Lua taint that propagated into FullLayout and blocked
+--- Frame:Show() in combat (ADDON_ACTION_BLOCKED).
+function SD.ApplyPopupSuppression(enabled)
+    local ct = SD.clickTarget
+    if not ct then return end
+    if enabled then
+        if ct.Disable then ct:Disable() end
+    else
+        if ct.Enable then ct:Enable() end
+    end
+end
