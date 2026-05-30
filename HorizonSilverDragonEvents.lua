@@ -106,18 +106,19 @@ local function RegisterSilverDragonCallbacks()
         if not SD.GetDB("enabled", true) then return end
         if not npcID then return end
 
+        local mobKey   = "mob:" .. npcID
         local mapID    = zone
         local zoneName = ResolveZoneName(mapID)
         local name     = ResolveMobName(npcID)
 
         local existingIdx
-        for i, id in ipairs(SD.alertOrder) do
-            if id == npcID then existingIdx = i; break end
+        for i, k in ipairs(SD.alertOrder) do
+            if k == mobKey then existingIdx = i; break end
         end
 
         if existingIdx then
             -- Update existing alert and navigate to it; preserve original seenAt.
-            local alert = SD.alertQueue[npcID]
+            local alert = SD.alertQueue[mobKey]
             alert.mapID    = mapID
             alert.x        = x
             alert.y        = y
@@ -127,7 +128,8 @@ local function RegisterSilverDragonCallbacks()
             if name then alert.name = name end
             SD.alertIndex = existingIdx
         else
-            SD.alertQueue[npcID] = {
+            SD.alertQueue[mobKey] = {
+                type     = "mob",
                 npcID    = npcID,
                 name     = name,
                 mapID    = mapID,
@@ -138,14 +140,14 @@ local function RegisterSilverDragonCallbacks()
                 source   = source,
                 seenAt   = GetTime(),
             }
-            SD.alertOrder[#SD.alertOrder + 1] = npcID
+            SD.alertOrder[#SD.alertOrder + 1] = mobKey
             SD.alertIndex = #SD.alertOrder
             StartSeenAgoTimer()
 
             -- If the name wasn't in SD's cache yet, retry after 1 s.
             if not name then
                 C_Timer.After(1, function()
-                    local alert = SD.alertQueue[npcID]
+                    local alert = SD.alertQueue[mobKey]
                     if not alert or alert.name then return end
                     local c = _G.SilverDragon
                     local resolved = c and c.NameForMob and c:NameForMob(npcID)
@@ -172,6 +174,57 @@ local function RegisterSilverDragonCallbacks()
         local sdModule = horizon.focus and horizon.focus.sd
         if horizon.GetDB("sd_autoWaypoint", false) and sdModule and sdModule.SetWaypoint and alert then
             pcall(sdModule.SetWaypoint, { title = alert.name, vignetteMapID = alert.mapID, vignetteX = alert.x, vignetteY = alert.y })
+        end
+
+        if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
+    end)
+
+    -- Fired when SilverDragon detects a loot container vignette (chests, rare loot objects).
+    core.RegisterCallback(SD, "SeenLoot", function(_, name, vignetteID, uiMapID, x, y, vignetteGUID)
+        if not SD.GetDB("enabled", true) then return end
+        if not vignetteID then return end
+        if not horizon.GetDB("sd_showLoot", true) then return end
+
+        local lootKey = "loot:" .. vignetteID
+
+        local existingIdx
+        for i, k in ipairs(SD.alertOrder) do
+            if k == lootKey then existingIdx = i; break end
+        end
+
+        if existingIdx then
+            local alert = SD.alertQueue[lootKey]
+            alert.mapID        = uiMapID
+            alert.x            = x
+            alert.y            = y
+            alert.vignetteGUID = vignetteGUID
+            if name then alert.name = name end
+            SD.alertIndex = existingIdx
+        else
+            SD.alertQueue[lootKey] = {
+                type         = "loot",
+                vignetteID   = vignetteID,
+                name         = name,
+                mapID        = uiMapID,
+                x            = x,
+                y            = y,
+                vignetteGUID = vignetteGUID,
+                seenAt       = GetTime(),
+            }
+            SD.alertOrder[#SD.alertOrder + 1] = lootKey
+            SD.alertIndex = #SD.alertOrder
+            StartSeenAgoTimer()
+
+            -- FIFO trim: drop oldest entries when queue exceeds the configured limit.
+            local maxAlerts = math.max(SD_MAX_ALERTS_MIN,
+                math.min(SD_MAX_ALERTS_MAX,
+                    horizon.GetDB("sd_maxAlerts", SD_MAX_ALERTS_DEFAULT)))
+            while #SD.alertOrder > maxAlerts do
+                local removed = table.remove(SD.alertOrder, 1)
+                SD.alertQueue[removed] = nil
+                SD.alertIndex = SD.alertIndex - 1
+            end
+            if SD.alertIndex < 1 then SD.alertIndex = 1 end
         end
 
         if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end

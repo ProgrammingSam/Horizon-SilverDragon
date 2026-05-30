@@ -20,9 +20,14 @@ local function CollectSilverDragonEntries()
     if not horizon.GetDB("sd_enabled", false) then return {} end
 
     if #SD.alertOrder == 0 or SD.alertIndex == 0 then return {} end
-    local npcID = SD.alertOrder[SD.alertIndex]
-    local alert = npcID and SD.alertQueue[npcID]
+    local alertKey = SD.alertOrder[SD.alertIndex]
+    local alert    = alertKey and SD.alertQueue[alertKey]
     if not alert then return {} end
+
+    local isLoot = (alert.type == "loot")
+
+    -- Per-type visibility filter.
+    if isLoot and not horizon.GetDB("sd_showLoot", true) then return {} end
 
     local color = horizon.GetQuestColor and horizon.GetQuestColor("SILVERDRAGON")
                   or { r = 0.96, g = 0.56, b = 0.08 }
@@ -45,28 +50,37 @@ local function CollectSilverDragonEntries()
         end
     end
 
+    local title
+    if isLoot then
+        title = alert.name or ("Loot #" .. tostring(alert.vignetteID))
+    else
+        title = alert.name or ("NPC #" .. tostring(alert.npcID))
+    end
+
     return {
         {
-            entryKey       = "silverdragon:" .. tostring(alert.npcID),
+            entryKey       = "silverdragon:" .. alertKey,
             questID        = nil,
-            title          = alert.name or ("NPC #" .. tostring(alert.npcID)),
+            title          = title,
             objectives     = objectives,
             color          = color,
             category       = "SILVERDRAGON",
             isComplete     = false,
             isSuperTracked = false,
             isNearby       = true,
-            isRare         = true,
-            creatureID     = tonumber(alert.npcID),
+            isRare         = not isLoot,
+            isRareLoot     = isLoot,
+            creatureID     = not isLoot and tonumber(alert.npcID) or nil,
             vignetteMapID  = alert.mapID,
             vignetteX      = alert.x,
             vignetteY      = alert.y,
             zoneName       = alert.zoneName,
             sdIsDead       = alert.is_dead,
             sdSource       = alert.source,
+            sdIsLoot       = isLoot,
             sdAlertIndex   = SD.alertIndex,
             sdAlertTotal   = #SD.alertOrder,
-            vignetteAtlas  = "VignetteKillElite",
+            vignetteAtlas  = isLoot and "VignetteInteract" or "VignetteKillElite",
             noEntryNumber  = true,
         },
     }
