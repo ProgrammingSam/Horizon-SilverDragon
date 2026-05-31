@@ -81,7 +81,7 @@ local function CollectSilverDragonEntries()
             sdIsLoot       = isLoot,
             sdAlertIndex   = SD.alertIndex,
             sdAlertTotal   = #SD.alertOrder,
-            vignetteAtlas  = isLoot and "VignetteInteract" or "VignetteKillElite",
+            vignetteAtlas  = isLoot and "VignetteLoot" or "VignetteKillElite",
             noEntryNumber  = true,
         },
     }
