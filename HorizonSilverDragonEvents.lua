@@ -298,10 +298,10 @@ end
 
 -- ============================================================================
 -- EVENT FRAME
--- Kill detection uses PARTY_KILL (passes attacker GUID + target GUID), which
--- lets us extract npcID without parsing the combat log. Registered at module
--- level on the shared eventFrame — same pattern as ADDON_LOADED — so
--- RegisterEvent runs in the safe main-chunk initialization context.
+-- Kill detection uses PARTY_KILL. In TWW the GUID args are "secret strings"
+-- (WoW protects combat data in tainted contexts), so we use string.match()
+-- rather than the colon-method form — passing a secret string to a C function
+-- is allowed; indexing it to find a method is not.
 -- ============================================================================
 
 local eventFrame = CreateFrame("Frame")
@@ -318,7 +318,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
         -- arg1 = attacker GUID, arg2 = target (killed unit) GUID
         local destGUID = arg2
         if not destGUID or not SD.alertOrder then return end
-        local npcID = tonumber(destGUID:match("Creature%-0%-%d+%-%d+%-%d+%-(%d+)%-"))
+        local npcID = tonumber(string.match(destGUID, "Creature%-0%-%d+%-%d+%-%d+%-(%d+)%-"))
         if not npcID then return end
         local mobKey = "mob:" .. npcID
         local alert = SD.alertQueue[mobKey]
