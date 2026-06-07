@@ -270,6 +270,72 @@ local function RegisterSilverDragonCallbacks()
 end
 
 -- ============================================================================
+-- KILL DETECTION
+-- Auto-prune mob alerts when the rare is killed (combat log) or a loot
+-- alert's vignette disappears (looted by anyone nearby).
+-- ============================================================================
+
+local function PruneMobByNpcID(npcID)
+    local mobKey = "mob:" .. npcID
+    for i, k in ipairs(SD.alertOrder) do
+        if k == mobKey then
+            table.remove(SD.alertOrder, i)
+            SD.alertQueue[mobKey] = nil
+            if SD.alertIndex > i then
+                SD.alertIndex = SD.alertIndex - 1
+            elseif SD.alertIndex >= i then
+                SD.alertIndex = math.max(0, math.min(SD.alertIndex, #SD.alertOrder))
+            end
+            if #SD.alertOrder == 0 then SD.alertIndex = 0 end
+            if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
+            return
+        end
+    end
+end
+
+local killFrame = CreateFrame("Frame")
+killFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+killFrame:RegisterEvent("VIGNETTES_UPDATED")
+killFrame:SetScript("OnEvent", function(_, event)
+    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        -- UNIT_DIED fires for enemies in your combat log — covers kills you or your group land.
+        local _, subevent, _, _, _, _, _, destGUID = CombatLogGetCurrentEventInfo()
+        if subevent ~= "UNIT_DIED" then return end
+        if not destGUID then return end
+        -- Extract npcID from Creature GUID: Creature-0-realmID-serverID-instanceID-npcID-spawnUID
+        local npcID = tonumber(destGUID:match("Creature%-0%-%d+%-%d+%-%d+%-(%d+)%-"))
+        if npcID then PruneMobByNpcID(npcID) end
+
+    elseif event == "VIGNETTES_UPDATED" then
+        -- Prune loot alerts whose vignette has disappeared (chest looted by anyone nearby).
+        if #SD.alertOrder == 0 then return end
+        local activeGUIDs = {}
+        if C_VignetteInfo and C_VignetteInfo.GetVignettes then
+            for _, guid in ipairs(C_VignetteInfo.GetVignettes()) do
+                activeGUIDs[guid] = true
+            end
+        end
+        local changed = false
+        for i = #SD.alertOrder, 1, -1 do
+            local k = SD.alertOrder[i]
+            local alert = SD.alertQueue[k]
+            if alert and alert.type == "loot" and alert.vignetteGUID and not activeGUIDs[alert.vignetteGUID] then
+                table.remove(SD.alertOrder, i)
+                SD.alertQueue[k] = nil
+                if SD.alertIndex >= i then
+                    SD.alertIndex = math.max(0, SD.alertIndex - 1)
+                end
+                changed = true
+            end
+        end
+        if changed then
+            if #SD.alertOrder == 0 then SD.alertIndex = 0 end
+            if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
+        end
+    end
+end)
+
+-- ============================================================================
 -- EVENT FRAME
 -- ============================================================================
 
