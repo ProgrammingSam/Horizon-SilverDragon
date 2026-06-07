@@ -267,12 +267,52 @@ local function RegisterSilverDragonCallbacks()
             if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
         end
     end)
+
+    -- Kill detection: auto-prune mob alerts when the rare dies, and prune loot
+    -- alerts when their vignette disappears. Registered here (inside a safe
+    -- ADDON_LOADED context) to avoid ADDON_ACTION_FORBIDDEN on Frame:RegisterEvent.
+    killFrame = CreateFrame("Frame")
+    killFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    killFrame:RegisterEvent("VIGNETTES_UPDATED")
+    killFrame:SetScript("OnEvent", function(_, event)
+        if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+            local _, subevent, _, _, _, _, _, destGUID = CombatLogGetCurrentEventInfo()
+            if subevent ~= "UNIT_DIED" then return end
+            if not destGUID then return end
+            local npcID = tonumber(destGUID:match("Creature%-0%-%d+%-%d+%-%d+%-(%d+)%-"))
+            if npcID then PruneMobByNpcID(npcID) end
+
+        elseif event == "VIGNETTES_UPDATED" then
+            if #SD.alertOrder == 0 then return end
+            local activeGUIDs = {}
+            if C_VignetteInfo and C_VignetteInfo.GetVignettes then
+                for _, guid in ipairs(C_VignetteInfo.GetVignettes()) do
+                    activeGUIDs[guid] = true
+                end
+            end
+            local changed = false
+            for i = #SD.alertOrder, 1, -1 do
+                local k = SD.alertOrder[i]
+                local alert = SD.alertQueue[k]
+                if alert and alert.type == "loot" and alert.vignetteGUID and not activeGUIDs[alert.vignetteGUID] then
+                    table.remove(SD.alertOrder, i)
+                    SD.alertQueue[k] = nil
+                    if SD.alertIndex >= i then
+                        SD.alertIndex = math.max(0, SD.alertIndex - 1)
+                    end
+                    changed = true
+                end
+            end
+            if changed then
+                if #SD.alertOrder == 0 then SD.alertIndex = 0 end
+                if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
+            end
+        end
+    end)
 end
 
 -- ============================================================================
 -- KILL DETECTION
--- Auto-prune mob alerts when the rare is killed (combat log) or a loot
--- alert's vignette disappears (looted by anyone nearby).
 -- ============================================================================
 
 local function PruneMobByNpcID(npcID)
@@ -293,47 +333,9 @@ local function PruneMobByNpcID(npcID)
     end
 end
 
-local killFrame = CreateFrame("Frame")
-killFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-killFrame:RegisterEvent("VIGNETTES_UPDATED")
-killFrame:SetScript("OnEvent", function(_, event)
-    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
-        -- UNIT_DIED fires for enemies in your combat log — covers kills you or your group land.
-        local _, subevent, _, _, _, _, _, destGUID = CombatLogGetCurrentEventInfo()
-        if subevent ~= "UNIT_DIED" then return end
-        if not destGUID then return end
-        -- Extract npcID from Creature GUID: Creature-0-realmID-serverID-instanceID-npcID-spawnUID
-        local npcID = tonumber(destGUID:match("Creature%-0%-%d+%-%d+%-%d+%-(%d+)%-"))
-        if npcID then PruneMobByNpcID(npcID) end
-
-    elseif event == "VIGNETTES_UPDATED" then
-        -- Prune loot alerts whose vignette has disappeared (chest looted by anyone nearby).
-        if #SD.alertOrder == 0 then return end
-        local activeGUIDs = {}
-        if C_VignetteInfo and C_VignetteInfo.GetVignettes then
-            for _, guid in ipairs(C_VignetteInfo.GetVignettes()) do
-                activeGUIDs[guid] = true
-            end
-        end
-        local changed = false
-        for i = #SD.alertOrder, 1, -1 do
-            local k = SD.alertOrder[i]
-            local alert = SD.alertQueue[k]
-            if alert and alert.type == "loot" and alert.vignetteGUID and not activeGUIDs[alert.vignetteGUID] then
-                table.remove(SD.alertOrder, i)
-                SD.alertQueue[k] = nil
-                if SD.alertIndex >= i then
-                    SD.alertIndex = math.max(0, SD.alertIndex - 1)
-                end
-                changed = true
-            end
-        end
-        if changed then
-            if #SD.alertOrder == 0 then SD.alertIndex = 0 end
-            if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
-        end
-    end
-end)
+-- killFrame is created and registered inside RegisterSilverDragonCallbacks
+-- (called from ADDON_LOADED) so RegisterEvent runs in a safe, non-tainted context.
+local killFrame
 
 -- ============================================================================
 -- EVENT FRAME
