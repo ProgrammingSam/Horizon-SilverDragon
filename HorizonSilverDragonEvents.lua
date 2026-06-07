@@ -298,16 +298,38 @@ end
 
 -- ============================================================================
 -- EVENT FRAME
--- Kill detection uses COMBAT_LOG_EVENT_UNFILTERED + CombatLogGetCurrentEventInfo().
--- In TWW, PARTY_KILL passes GUIDs as protected "secret strings" that cannot be
--- used in any way from tainted addon code (not even with C function calls that
--- involve string conversion). CombatLogGetCurrentEventInfo() is explicitly safe
--- and returns plain Lua values regardless of taint context.
+-- Kill detection: prefer UNIT_DIED (available in TWW, fires for all nearby
+-- creature deaths, GUID is a plain string). Fall back to
+-- COMBAT_LOG_EVENT_UNFILTERED on older clients where UNIT_DIED is restricted.
+-- PARTY_KILL is explicitly avoided — TWW passes its GUIDs as secret strings
+-- that cannot be read from tainted addon code in any way.
+-- Pattern mirrors SilverDragon's own popup.lua kill-detection logic.
 -- ============================================================================
+
+-- Determine kill event at load time so we register exactly one event.
+local KILL_EVENT = (C_EventUtils and C_EventUtils.IsEventValid
+                    and C_EventUtils.IsEventValid("UNIT_DIED"))
+                   and "UNIT_DIED" or "COMBAT_LOG_EVENT_UNFILTERED"
+
+local function HandleKillGUID(destGUID)
+    -- Guard against secret strings (possible on older TWW builds).
+    if issecretvalue and issecretvalue(destGUID) then return end
+    if not destGUID or not SD.alertOrder then return end
+    local npcID = tonumber(string.match(destGUID, "Creature%-0%-%d+%-%d+%-%d+%-(%d+)%-"))
+    if not npcID then return end
+    local mobKey = "mob:" .. npcID
+    local alert = SD.alertQueue[mobKey]
+    if alert and not alert.killedAt then
+        alert.killedAt = GetTime()
+        local delay = math.max(1, math.min(60, tonumber(horizon.GetDB("sd_killFadeDelay", 5)) or 5))
+        C_Timer.After(delay, function() PruneMobByNpcID(npcID) end)
+        if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
+    end
+end
 
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
-eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+eventFrame:RegisterEvent(KILL_EVENT)
 eventFrame:RegisterEvent("VIGNETTES_UPDATED")
 eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
     if event == "ADDON_LOADED" then
@@ -315,20 +337,14 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
             C_Timer.After(0, RegisterSilverDragonCallbacks)
         end
 
+    elseif event == "UNIT_DIED" then
+        -- arg2 = GUID of the dead unit (plain string in TWW, not a secret string)
+        HandleKillGUID(arg2)
+
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        -- Fallback path for clients where UNIT_DIED isn't available.
         local _, subEvent, _, _, _, _, _, destGUID = CombatLogGetCurrentEventInfo()
-        if subEvent ~= "UNIT_DIED" then return end
-        if not destGUID or not SD.alertOrder then return end
-        local npcID = tonumber(string.match(destGUID, "Creature%-0%-%d+%-%d+%-%d+%-(%d+)%-"))
-        if not npcID then return end
-        local mobKey = "mob:" .. npcID
-        local alert = SD.alertQueue[mobKey]
-        if alert and not alert.killedAt then
-            alert.killedAt = GetTime()
-            local delay = math.max(1, math.min(60, tonumber(horizon.GetDB("sd_killFadeDelay", 5)) or 5))
-            C_Timer.After(delay, function() PruneMobByNpcID(npcID) end)
-            if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
-        end
+        if subEvent == "UNIT_DIED" then HandleKillGUID(destGUID) end
 
     elseif event == "VIGNETTES_UPDATED" then
         -- Mark loot alerts whose vignette has disappeared (chest looted by anyone nearby),
