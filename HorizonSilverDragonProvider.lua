@@ -58,16 +58,19 @@ local function CollectSilverDragonEntries()
         title = alert.name or ("NPC #" .. tostring(alert.npcID))
     end
 
-    -- Kill / found state: append colored suffix and flag for model desaturation + flash.
+    -- Kill / found state: flag for model desaturation + flash.
+    -- rareSuffix is stored separately so the renderer can append it AFTER
+    -- FormatLargeNumbersInString / ApplyTextCase, keeping |c color codes intact.
     local rareIsKilled = alert.killedAt ~= nil
     local rareIsFound  = alert.foundAt  ~= nil
     local triggerFlash = false
-    local FLASH_WINDOW = 0.6
+    local rareSuffix   = nil
+    local FLASH_WINDOW = 2.0
     if rareIsKilled then
-        title = title .. " |cffff5533(Killed)|r"
+        rareSuffix = " |cffff5533(Killed)|r"
         triggerFlash = (GetTime() - alert.killedAt) < FLASH_WINDOW
     elseif rareIsFound then
-        title = title .. " |cff55ff77(Found)|r"
+        rareSuffix = " |cff55ff77(Found)|r"
         triggerFlash = (GetTime() - alert.foundAt) < FLASH_WINDOW
     end
 
@@ -99,6 +102,7 @@ local function CollectSilverDragonEntries()
             rareIsKilled   = rareIsKilled,
             rareIsFound    = rareIsFound,
             triggerFlash   = triggerFlash,
+            rareSuffix     = rareSuffix,
         },
     }
 end
