@@ -58,6 +58,19 @@ local function CollectSilverDragonEntries()
         title = alert.name or ("NPC #" .. tostring(alert.npcID))
     end
 
+    -- Kill / found state: append colored suffix and flag for model desaturation + flash.
+    local rareIsKilled = alert.killedAt ~= nil
+    local rareIsFound  = alert.foundAt  ~= nil
+    local triggerFlash = false
+    local FLASH_WINDOW = 0.6
+    if rareIsKilled then
+        title = title .. " |cffff5533(Killed)|r"
+        triggerFlash = (GetTime() - alert.killedAt) < FLASH_WINDOW
+    elseif rareIsFound then
+        title = title .. " |cff55ff77(Found)|r"
+        triggerFlash = (GetTime() - alert.foundAt) < FLASH_WINDOW
+    end
+
     return {
         {
             entryKey       = "silverdragon:" .. alertKey,
@@ -83,6 +96,9 @@ local function CollectSilverDragonEntries()
             sdAlertTotal   = #SD.alertOrder,
             vignetteAtlas  = isLoot and "VignetteLoot" or "VignetteKillElite",
             noEntryNumber  = true,
+            rareIsKilled   = rareIsKilled,
+            rareIsFound    = rareIsFound,
+            triggerFlash   = triggerFlash,
         },
     }
 end

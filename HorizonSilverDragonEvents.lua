@@ -271,15 +271,15 @@ local function RegisterSilverDragonCallbacks()
 end
 
 -- ============================================================================
--- KILL DETECTION
+-- KILL / FOUND DETECTION
 -- ============================================================================
 
-local function PruneMobByNpcID(npcID)
-    local mobKey = "mob:" .. npcID
+--- Remove an alert from alertOrder + alertQueue by its key.
+local function PruneAlertByKey(key)
     for i, k in ipairs(SD.alertOrder) do
-        if k == mobKey then
+        if k == key then
             table.remove(SD.alertOrder, i)
-            SD.alertQueue[mobKey] = nil
+            SD.alertQueue[key] = nil
             if SD.alertIndex > i then
                 SD.alertIndex = SD.alertIndex - 1
             elseif SD.alertIndex >= i then
@@ -290,6 +290,10 @@ local function PruneMobByNpcID(npcID)
             return
         end
     end
+end
+
+local function PruneMobByNpcID(npcID)
+    PruneAlertByKey("mob:" .. npcID)
 end
 
 -- ============================================================================
@@ -313,12 +317,21 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
     elseif event == "PARTY_KILL" then
         -- arg1 = attacker GUID, arg2 = target (killed unit) GUID
         local destGUID = arg2
-        if not destGUID then return end
+        if not destGUID or not SD.alertOrder then return end
         local npcID = tonumber(destGUID:match("Creature%-0%-%d+%-%d+%-%d+%-(%d+)%-"))
-        if npcID then PruneMobByNpcID(npcID) end
+        if not npcID then return end
+        local mobKey = "mob:" .. npcID
+        local alert = SD.alertQueue[mobKey]
+        if alert and not alert.killedAt then
+            alert.killedAt = GetTime()
+            local delay = math.max(1, math.min(60, tonumber(horizon.GetDB("sd_killFadeDelay", 5)) or 5))
+            C_Timer.After(delay, function() PruneMobByNpcID(npcID) end)
+            if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
+        end
 
     elseif event == "VIGNETTES_UPDATED" then
-        -- Prune loot alerts whose vignette has disappeared (chest looted by anyone nearby).
+        -- Mark loot alerts whose vignette has disappeared (chest looted by anyone nearby),
+        -- then schedule removal after the configured delay.
         if not SD.alertOrder or #SD.alertOrder == 0 then return end
         local activeGUIDs = {}
         if C_VignetteInfo and C_VignetteInfo.GetVignettes then
@@ -326,22 +339,17 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
                 activeGUIDs[guid] = true
             end
         end
-        local changed = false
-        for i = #SD.alertOrder, 1, -1 do
-            local k = SD.alertOrder[i]
+        local delay = math.max(1, math.min(60, tonumber(horizon.GetDB("sd_killFadeDelay", 5)) or 5))
+        for _, k in ipairs(SD.alertOrder) do
             local alert = SD.alertQueue[k]
-            if alert and alert.type == "loot" and alert.vignetteGUID and not activeGUIDs[alert.vignetteGUID] then
-                table.remove(SD.alertOrder, i)
-                SD.alertQueue[k] = nil
-                if SD.alertIndex >= i then
-                    SD.alertIndex = math.max(0, SD.alertIndex - 1)
-                end
-                changed = true
+            if alert and alert.type == "loot" and alert.vignetteGUID
+                and not activeGUIDs[alert.vignetteGUID]
+                and not alert.foundAt then
+                alert.foundAt = GetTime()
+                local capturedKey = k
+                C_Timer.After(delay, function() PruneAlertByKey(capturedKey) end)
+                if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
             end
-        end
-        if changed then
-            if #SD.alertOrder == 0 then SD.alertIndex = 0 end
-            if horizon.ScheduleRefresh then horizon.ScheduleRefresh() end
         end
     end
 end)
