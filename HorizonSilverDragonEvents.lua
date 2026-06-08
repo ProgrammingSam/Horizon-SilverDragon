@@ -306,7 +306,7 @@ end
 -- Pattern mirrors SilverDragon's own popup.lua kill-detection logic.
 -- ============================================================================
 
--- Listen to combat-log deaths even when UNIT_DIED is valid; some clients expose UNIT_DIED but do not pass the creature GUID in the expected argument slot.
+-- Prefer UNIT_DIED when available; it avoids protected combat-log registration in combat. Keep arg1/arg2 handling below for client argument-shape differences.
 local HAS_UNIT_DIED = C_EventUtils and C_EventUtils.IsEventValid and C_EventUtils.IsEventValid("UNIT_DIED")
 
 local function HandleKillGUID(destGUID)
@@ -327,8 +327,11 @@ end
 
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
-eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-if HAS_UNIT_DIED then eventFrame:RegisterEvent("UNIT_DIED") end
+if HAS_UNIT_DIED then
+    eventFrame:RegisterEvent("UNIT_DIED")
+else
+    eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+end
 eventFrame:RegisterEvent("VIGNETTES_UPDATED")
 eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
     if event == "ADDON_LOADED" then
@@ -372,4 +375,6 @@ end)
 
 -- Safety net: if SilverDragon was already loaded before us.
 C_Timer.After(0, RegisterSilverDragonCallbacks)
+
+
 
