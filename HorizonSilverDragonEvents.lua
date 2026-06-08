@@ -1,4 +1,4 @@
---[[
+﻿--[[
     Horizon - SilverDragon - Events
     Registers callbacks on SilverDragon's LibCallbackHandler event system once
     both addons are loaded, tracks an ordered queue of active alerts, and asks
@@ -254,7 +254,7 @@ local function RegisterSilverDragonCallbacks()
     -- Fired when SilverDragon clears its popup (user dismissed or timer expired).
     -- When the Focus integration is active we own the alert lifecycle, so we
     -- ignore this event and let the user dismiss via the Focus tracker instead.
-    -- (SD's animFade → HideWhenPossible → PopupHide still fires, but we skip it
+    -- (SD's animFade â†’ HideWhenPossible â†’ PopupHide still fires, but we skip it
     -- to avoid also clearing our queue prematurely and to sidestep the known
     -- SD+TomTom stack-overflow caused by their re-entrant waypoint callbacks.)
     core.RegisterCallback(SD, "PopupHide", function()
@@ -301,15 +301,13 @@ end
 -- Kill detection: prefer UNIT_DIED (available in TWW, fires for all nearby
 -- creature deaths, GUID is a plain string). Fall back to
 -- COMBAT_LOG_EVENT_UNFILTERED on older clients where UNIT_DIED is restricted.
--- PARTY_KILL is explicitly avoided — TWW passes its GUIDs as secret strings
+-- PARTY_KILL is explicitly avoided â€” TWW passes its GUIDs as secret strings
 -- that cannot be read from tainted addon code in any way.
 -- Pattern mirrors SilverDragon's own popup.lua kill-detection logic.
 -- ============================================================================
 
--- Determine kill event at load time so we register exactly one event.
-local KILL_EVENT = (C_EventUtils and C_EventUtils.IsEventValid
-                    and C_EventUtils.IsEventValid("UNIT_DIED"))
-                   and "UNIT_DIED" or "COMBAT_LOG_EVENT_UNFILTERED"
+-- Listen to combat-log deaths even when UNIT_DIED is valid; some clients expose UNIT_DIED but do not pass the creature GUID in the expected argument slot.
+local HAS_UNIT_DIED = C_EventUtils and C_EventUtils.IsEventValid and C_EventUtils.IsEventValid("UNIT_DIED")
 
 local function HandleKillGUID(destGUID)
     -- Guard against secret strings (possible on older TWW builds).
@@ -329,7 +327,8 @@ end
 
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
-eventFrame:RegisterEvent(KILL_EVENT)
+eventFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+if HAS_UNIT_DIED then eventFrame:RegisterEvent("UNIT_DIED") end
 eventFrame:RegisterEvent("VIGNETTES_UPDATED")
 eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
     if event == "ADDON_LOADED" then
@@ -339,7 +338,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
 
     elseif event == "UNIT_DIED" then
         -- arg2 = GUID of the dead unit (plain string in TWW, not a secret string)
-        HandleKillGUID(arg2)
+        HandleKillGUID(arg2 or arg1)
 
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
         -- Fallback path for clients where UNIT_DIED isn't available.
@@ -373,3 +372,4 @@ end)
 
 -- Safety net: if SilverDragon was already loaded before us.
 C_Timer.After(0, RegisterSilverDragonCallbacks)
+
